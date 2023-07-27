@@ -201,6 +201,7 @@ type DataValidator struct {
 	stateMutex  sync.RWMutex
 	stage       pb.Stage
 	flushedLoc  *binlog.Location
+	currentLoc  *binlog.Location
 	result      pb.ProcessResult
 	tableStatus map[string]*tableValidateStatus
 
@@ -944,6 +945,7 @@ func (v *DataValidator) processRowsEvent(header *replication.EventHeader, ev *re
 }
 
 func (v *DataValidator) checkAndPersistCheckpointAndData(loc binlog.Location) error {
+	v.setCurrentLoc(&loc)
 	metaFlushInterval := v.cfg.ValidatorCfg.MetaFlushInterval.Duration
 	if time.Since(v.lastFlushTime) > metaFlushInterval {
 		v.lastFlushTime = time.Now()
@@ -1072,6 +1074,23 @@ func (v *DataValidator) setStage(stage pb.Stage) {
 	v.stateMutex.Lock()
 	defer v.stateMutex.Unlock()
 	v.stage = stage
+}
+
+func (v *DataValidator) getCurrentLoc() *binlog.Location {
+	v.stateMutex.RLock()
+	defer v.stateMutex.RUnlock()
+	return v.currentLoc
+}
+
+func (v *DataValidator) setCurrentLoc(loc *binlog.Location) {
+	v.stateMutex.Lock()
+	defer v.stateMutex.Unlock()
+	if loc == nil {
+		v.currentLoc = nil
+		return
+	}
+	clone := loc.Clone()
+	v.currentLoc = &clone
 }
 
 func (v *DataValidator) getFlushedLoc() *binlog.Location {
@@ -1349,12 +1368,12 @@ func (v *DataValidator) GetValidatorStatus() *pb.ValidationStatus {
 		returnedResult = nil
 	}
 
-	flushedLoc := v.getFlushedLoc()
+	currentLoc := v.getCurrentLoc()
 	var validatorBinlog, validatorBinlogGtid string
-	if flushedLoc != nil {
-		validatorBinlog = flushedLoc.Position.String()
-		if flushedLoc.GetGTID() != nil {
-			validatorBinlogGtid = flushedLoc.GetGTID().String()
+	if currentLoc != nil {
+		validatorBinlog = currentLoc.Position.String()
+		if currentLoc.GetGTID() != nil {
+			validatorBinlogGtid = currentLoc.GetGTID().String()
 		}
 	}
 	return &pb.ValidationStatus{
