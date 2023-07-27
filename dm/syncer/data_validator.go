@@ -1200,7 +1200,11 @@ func (v *DataValidator) getPendingRowSize() int64 {
 }
 
 func (v *DataValidator) sendError(err error) {
-	v.errChan <- err
+	select {
+	case v.errChan <- err:
+	default:
+		// ignore here since only one error is enough and this worker is about to stop soon, thus dropping it
+	}
 }
 
 func (v *DataValidator) getNewErrorRowCount() int64 {
