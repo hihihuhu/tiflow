@@ -39,6 +39,7 @@ import (
 	"github.com/pingcap/tiflow/dm/pkg/log"
 	"github.com/pingcap/tiflow/dm/pkg/terror"
 	"github.com/pingcap/tiflow/dm/pkg/utils"
+	"github.com/pingcap/tiflow/dm/syncer/dbconn"
 	"github.com/pingcap/tiflow/pkg/sqlmodel"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
@@ -527,7 +528,7 @@ func isRetryableDBError(err error) bool {
 	case driver.ErrBadConn, mysql.ErrInvalidConn:
 		return true
 	}
-	return false
+	return dbconn.IsDmRetryableError(err)
 }
 
 func scanRow(rows *sql.Rows) ([]*sql.NullString, error) {

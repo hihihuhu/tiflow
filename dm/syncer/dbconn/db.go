@@ -22,6 +22,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/pingcap/failpoint"
+	"github.com/pingcap/tidb/errno"
 	"github.com/pingcap/tidb/util/dbutil"
 	"github.com/pingcap/tiflow/dm/config"
 	"github.com/pingcap/tiflow/dm/pkg/conn"
@@ -31,6 +32,7 @@ import (
 	"github.com/pingcap/tiflow/dm/pkg/terror"
 	"github.com/pingcap/tiflow/dm/pkg/utils"
 	"github.com/pingcap/tiflow/dm/syncer/metrics"
+	"github.com/pingcap/tiflow/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
@@ -261,8 +263,26 @@ func (conn *DBConn) retryableFn(tctx *tcontext.Context, queries, args any) func(
 				log.ShortError(err))
 			return true
 		}
+		if IsDmRetryableError(err) {
+			tctx.L().Warn("execute statements", zap.Int("retry", retryTime),
+				zap.String("queries", utils.TruncateInterface(queries, -1)),
+				zap.String("arguments", utils.TruncateInterface(args, -1)),
+				log.ShortError(err))
+			return true
+		}
+
 		return false
 	}
+}
+
+func IsDmRetryableError(err error) bool {
+	err = errors.Cause(err) // check the original error
+	mysqlErr, ok := err.(*mysql.MySQLError)
+	if !ok {
+		return false
+	}
+	// retry on all internal error (9xxx)
+	return mysqlErr.Number >= errno.ErrPDServerTimeout
 }
 
 // CreateConns returns a opened DB from dbCfg and number of `count` connections of that DB.
